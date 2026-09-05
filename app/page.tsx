@@ -14,6 +14,10 @@ type Metrics = {
   pdfWidthMm: number;
   trimmedBottomPx: number;
   trimmedTopPx: number;
+  method?: string;
+  importMs?: number;
+  drawMs?: number;
+  serializeMs?: number;
 };
 
 const LOCAL_PRINT_ENDPOINT = "http://localhost:5092/print-pdf";
@@ -21,6 +25,32 @@ const PRINTER_NAME = "Basic 200";
 const PDF_WIDTH_MM = 72;
 const PDF_HEIGHT_MM = 297;
 const TICKET_WIDTH_PX = 272;
+const DIRECT_LARGE_PDF_HEIGHT_MM = 303;
+
+const LARGE_SALE_ITEMS = [
+  { name: "Arroz extra 1kg", qty: 2, total: 9.8 },
+  { name: "Aceite vegetal", qty: 1, total: 8.9 },
+  { name: "Azucar rubia 1kg", qty: 3, total: 12.6 },
+  { name: "Leche evaporada", qty: 6, total: 24 },
+  { name: "Pan molde integral", qty: 1, total: 7.5 },
+  { name: "Queso fresco", qty: 1, total: 11.9 },
+  { name: "Jamonada familiar", qty: 2, total: 13.8 },
+  { name: "Cafe instantaneo", qty: 1, total: 15.5 },
+  { name: "Chocolate taza", qty: 2, total: 10.4 },
+  { name: "Fideos tallarin", qty: 4, total: 14 },
+  { name: "Atun en lata", qty: 5, total: 32.5 },
+  { name: "Gaseosa 1.5L", qty: 2, total: 16 },
+  { name: "Agua mineral", qty: 6, total: 12 },
+  { name: "Detergente 800g", qty: 1, total: 9.7 },
+  { name: "Jabon liquido", qty: 2, total: 18.6 },
+  { name: "Papel higienico", qty: 1, total: 21.9 },
+  { name: "Yogurt familiar", qty: 2, total: 17.8 },
+  { name: "Cereal chocolate", qty: 1, total: 13.4 },
+  { name: "Mermelada fresa", qty: 1, total: 8.5 },
+  { name: "Galletas surtidas", qty: 4, total: 18 },
+];
+
+const LARGE_SALE_DISCOUNT = 7.5;
 
 export default function Home() {
   const simpleTicketRef = useRef<HTMLDivElement>(null);
@@ -139,6 +169,259 @@ export default function Home() {
         trimmedTopPx,
       },
     };
+  }
+
+  async function generateLargeSalePdfDirect() {
+    const generationStart = performance.now();
+
+    const importStart = performance.now();
+    const { jsPDF } = await import("jspdf");
+    const importMs = performance.now() - importStart;
+
+    const drawStart = performance.now();
+
+    // Esta prueba NO usa HTML, CSS, html2canvas, canvas ni PNG.
+    // Usa Helvetica (similar visualmente a Arial) y tamaños reforzados para térmica 203 DPI.
+    // El contenido se dibuja directamente como texto y vectores dentro del PDF.
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: [PDF_WIDTH_MM, DIRECT_LARGE_PDF_HEIGHT_MM],
+      compress: true,
+    });
+
+    const left = 4;
+    const right = PDF_WIDTH_MM - 4;
+    const center = PDF_WIDTH_MM / 2;
+    const qtyX = 49;
+    const totalX = right;
+    let y = 7;
+
+    const line = () => {
+      pdf.setLineDashPattern([1.1, 1.1], 0);
+      pdf.line(left, y, right, y);
+      pdf.setLineDashPattern([], 0);
+      y += 4;
+    };
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setLineWidth(0.45);
+    pdf.rect(center - 7, y, 14, 14);
+    pdf.setFontSize(14);
+    pdf.text("DM", center, y + 9, { align: "center" });
+    y += 19;
+
+    pdf.setFontSize(11.5);
+    pdf.text("NOTA DE VENTA", center, y, { align: "center" });
+    y += 5;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.4);
+    pdf.text("Demo Market S.A.C.", center, y, { align: "center" });
+    y += 4;
+    pdf.text("RUC 20123456789", center, y, { align: "center" });
+    y += 4;
+    pdf.text("Av. Principal 123 - Lima", center, y, { align: "center" });
+    y += 4;
+    pdf.text("Telefono: 999 888 777", center, y, { align: "center" });
+    y += 5;
+
+    line();
+
+    // Datos principales ligeramente más gruesos para impresión térmica.
+    pdf.setFont("helvetica", "bold");
+    pdf.text("Fecha: 04/09/2026 11:45", left, y);
+    y += 4;
+    pdf.text("Documento: NV-LARGA-000123", left, y);
+    y += 4;
+    pdf.text("Caja: 02", left, y);
+    y += 4;
+    pdf.text("Cliente: PUBLICO GENERAL", left, y);
+    y += 4;
+    pdf.text("Vendedor: LEONARDO", left, y);
+    y += 5;
+
+    line();
+
+    pdf.setFont("helvetica", "bold");
+    pdf.text("Producto", left, y);
+    pdf.text("Cant", qtyX, y, { align: "right" });
+    pdf.text("Total", totalX, y, { align: "right" });
+    y += 4;
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8.2);
+    for (const item of LARGE_SALE_ITEMS) {
+      pdf.text(item.name, left, y);
+      pdf.text(String(item.qty), qtyX, y, { align: "right" });
+      pdf.text(`S/ ${item.total.toFixed(2)}`, totalX, y, { align: "right" });
+      y += 4.6;
+    }
+
+    y += 1;
+    line();
+
+    const subtotal = LARGE_SALE_ITEMS.reduce((sum, item) => sum + item.total, 0);
+    const total = subtotal - LARGE_SALE_DISCOUNT;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.4);
+    pdf.text(`Items: ${LARGE_SALE_ITEMS.length}`, right, y, { align: "right" });
+    y += 4;
+    pdf.text(`Subtotal: S/ ${subtotal.toFixed(2)}`, right, y, { align: "right" });
+    y += 4;
+    pdf.text(`Descuento: -S/ ${LARGE_SALE_DISCOUNT.toFixed(2)}`, right, y, {
+      align: "right",
+    });
+    y += 4;
+    pdf.text("IGV: S/ 0.00", right, y, { align: "right" });
+    y += 4;
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10.5);
+    pdf.text(`TOTAL: S/ ${total.toFixed(2)}`, right, y, { align: "right" });
+    y += 6;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8.4);
+    line();
+
+    pdf.text("Pago: Yape", left, y);
+    y += 4;
+    pdf.text("Operacion: 987654321", left, y);
+    y += 4;
+    pdf.text("Autorizacion: OK", left, y);
+    y += 5;
+
+    line();
+
+    // Codigo de barras visual simple usando solo vectores de jsPDF.
+    const barcodeWidth = 43;
+    const barcodeLeft = center - barcodeWidth / 2;
+    const barcodeTop = y;
+    const barcodeHeight = 11;
+    let barcodeX = barcodeLeft;
+
+    for (let index = 0; index < 34; index += 1) {
+      const barWidth = index % 5 === 0 ? 0.8 : index % 3 === 0 ? 0.55 : 0.3;
+      pdf.setLineWidth(barWidth);
+      pdf.line(barcodeX, barcodeTop, barcodeX, barcodeTop + barcodeHeight);
+      barcodeX += index % 4 === 0 ? 1.55 : 1.2;
+
+      if (barcodeX >= barcodeLeft + barcodeWidth) {
+        break;
+      }
+    }
+
+    y += barcodeHeight + 6;
+    pdf.setLineWidth(0.3);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8.4);
+    pdf.text("Gracias por su compra", center, y, { align: "center" });
+    y += 4;
+    pdf.text("Conserve este comprobante", center, y, { align: "center" });
+
+    const drawMs = performance.now() - drawStart;
+
+    const serializeStart = performance.now();
+    // Se serializa una sola vez. Del mismo ArrayBuffer salen Blob y Base64.
+    const pdfArrayBuffer = pdf.output("arraybuffer");
+    const pdfBlob = new Blob([pdfArrayBuffer], { type: "application/pdf" });
+    const pdfBase64 = arrayBufferToBase64(pdfArrayBuffer);
+    const serializeMs = performance.now() - serializeStart;
+
+    const generationMs = performance.now() - generationStart;
+    const fileName = `nota-venta-larga-jspdf-directo-${PDF_WIDTH_MM}mm.pdf`;
+
+    return {
+      fileName,
+      pdfBlob,
+      pdfBase64,
+      metrics: {
+        fileName,
+        generationMs,
+        pdfKb: Math.round(pdfArrayBuffer.byteLength / 1024),
+        pdfHeightMm: DIRECT_LARGE_PDF_HEIGHT_MM,
+        pdfWidthMm: PDF_WIDTH_MM,
+        trimmedBottomPx: 0,
+        trimmedTopPx: 0,
+        method: "jsPDF directo",
+        importMs,
+        drawMs,
+        serializeMs,
+      } satisfies Metrics,
+    };
+  }
+
+  async function handleGenerateLargeSaleDirect() {
+    setStatus("working");
+    setMessage("Generando nota larga con jsPDF directo, sin html2canvas...");
+
+    try {
+      const result = await generateLargeSalePdfDirect();
+
+      updatePreviewUrl(result.pdfBlob);
+      setMetrics(result.metrics);
+      setStatus("success");
+      setMessage(
+        `Nota larga jsPDF directo generada en ${result.metrics.generationMs.toFixed(1)} ms.`,
+      );
+    } catch (error) {
+      setStatus("error");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo generar la nota larga con jsPDF directo.",
+      );
+    }
+  }
+
+  async function handleGenerateAndPrintLargeSaleDirect() {
+    const totalStart = performance.now();
+
+    setStatus("working");
+    setMessage(
+      "Generando nota larga con jsPDF directo y enviandola a DriverPrinter...",
+    );
+
+    try {
+      const result = await generateLargeSalePdfDirect();
+
+      const response = await fetch(LOCAL_PRINT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          printerName: PRINTER_NAME,
+          fileName: result.fileName,
+          pdfBase64: result.pdfBase64,
+          pdfUrl: null,
+          // DriverPrinter usa su configuracion local; este valor no decide el modo.
+          mode: "pdfium",
+        }),
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        throw new Error(responseText || `Error HTTP ${response.status}`);
+      }
+
+      const totalMs = performance.now() - totalStart;
+
+      updatePreviewUrl(result.pdfBlob);
+      setMetrics({ ...result.metrics, totalMs });
+      setStatus("success");
+      setMessage(responseText || "Nota larga jsPDF directo enviada correctamente.");
+    } catch (error) {
+      setStatus("error");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo enviar la nota larga jsPDF directo.",
+      );
+    }
   }
 
   async function handleGenerate(kind: TicketKind) {
@@ -351,6 +634,29 @@ export default function Home() {
               >
                 Generar e imprimir nota larga
               </ActionButton>
+
+              <div className="mt-3 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4">
+                <p className="text-sm font-bold text-cyan-200">
+                  Prueba optimizada: jsPDF directo
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  No usa HTML, CSS, html2canvas, canvas ni PNG. Dibuja la nota
+                  larga directamente dentro del PDF para comparar tiempos.
+                </p>
+              </div>
+
+              <ActionButton
+                disabled={status === "working"}
+                onClick={handleGenerateLargeSaleDirect}
+              >
+                Generar nota larga - jsPDF directo
+              </ActionButton>
+              <ActionButton
+                disabled={status === "working"}
+                onClick={handleGenerateAndPrintLargeSaleDirect}
+              >
+                Generar e imprimir nota larga - jsPDF directo
+              </ActionButton>
             </div>
 
             <div className={`mt-6 rounded-2xl border p-4 text-sm ${statusClassName}`}>
@@ -367,6 +673,19 @@ export default function Home() {
                   <span className="font-semibold text-slate-100">Generacion:</span>{" "}
                   {metrics.generationMs.toFixed(1)} ms
                 </p>
+                {metrics.method ? (
+                  <p className="mt-2">
+                    <span className="font-semibold text-slate-100">Metodo:</span>{" "}
+                    {metrics.method}
+                  </p>
+                ) : null}
+                {typeof metrics.importMs === "number" ? (
+                  <p className="mt-2 text-xs">
+                    jsPDF import: {metrics.importMs.toFixed(1)} ms | dibujo:{" "}
+                    {metrics.drawMs?.toFixed(1)} ms | serializacion/Base64:{" "}
+                    {metrics.serializeMs?.toFixed(1)} ms
+                  </p>
+                ) : null}
                 {typeof metrics.totalMs === "number" ? (
                   <p className="mt-2">
                     <span className="font-semibold text-slate-100">Total:</span>{" "}
@@ -381,10 +700,12 @@ export default function Home() {
                   <span className="font-semibold text-slate-100">Tamano:</span>{" "}
                   {metrics.pdfWidthMm} x {metrics.pdfHeightMm} mm
                 </p>
-                <p className="mt-2">
-                  <span className="font-semibold text-slate-100">Recorte:</span>{" "}
-                  arriba {metrics.trimmedTopPx}px, abajo {metrics.trimmedBottomPx}px
-                </p>
+                {!metrics.method ? (
+                  <p className="mt-2">
+                    <span className="font-semibold text-slate-100">Recorte:</span>{" "}
+                    arriba {metrics.trimmedTopPx}px, abajo {metrics.trimmedBottomPx}px
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -419,6 +740,19 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
 }
 
 function trimVerticalWhitespace(sourceCanvas: HTMLCanvasElement, paddingPx: number) {
@@ -649,30 +983,9 @@ function LargeSaleTicket({
   ref: React.Ref<HTMLDivElement>;
   widthPx: number;
 }) {
-  const items = [
-    { name: "Arroz extra 1kg", qty: 2, total: 9.8 },
-    { name: "Aceite vegetal", qty: 1, total: 8.9 },
-    { name: "Azucar rubia 1kg", qty: 3, total: 12.6 },
-    { name: "Leche evaporada", qty: 6, total: 24 },
-    { name: "Pan molde integral", qty: 1, total: 7.5 },
-    { name: "Queso fresco", qty: 1, total: 11.9 },
-    { name: "Jamonada familiar", qty: 2, total: 13.8 },
-    { name: "Cafe instantaneo", qty: 1, total: 15.5 },
-    { name: "Chocolate taza", qty: 2, total: 10.4 },
-    { name: "Fideos tallarin", qty: 4, total: 14 },
-    { name: "Atun en lata", qty: 5, total: 32.5 },
-    { name: "Gaseosa 1.5L", qty: 2, total: 16 },
-    { name: "Agua mineral", qty: 6, total: 12 },
-    { name: "Detergente 800g", qty: 1, total: 9.7 },
-    { name: "Jabon liquido", qty: 2, total: 18.6 },
-    { name: "Papel higienico", qty: 1, total: 21.9 },
-    { name: "Yogurt familiar", qty: 2, total: 17.8 },
-    { name: "Cereal chocolate", qty: 1, total: 13.4 },
-    { name: "Mermelada fresa", qty: 1, total: 8.5 },
-    { name: "Galletas surtidas", qty: 4, total: 18 },
-  ];
+  const items = LARGE_SALE_ITEMS;
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-  const discount = 7.5;
+  const discount = LARGE_SALE_DISCOUNT;
   const total = subtotal - discount;
 
   return (
